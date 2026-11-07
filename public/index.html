@@ -1,1 +1,105 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Card Duel – เกมการ์ดประลอง 2 คน</title>
+<style>
+:root{--bg:#f6f4ef;--sf:#fff;--tx:#1d1d1f;--mu:#6b6b70;--bd:#d9d6cc;--ac:#6d4aff;--ac2:#efeaff;--rd:#e5484d;--gn:#2f9e5b;--bl:#2f7de1;color-scheme:light dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#16161a;--sf:#222228;--tx:#f1f1f3;--mu:#9a9aa3;--bd:#3a3a44;--ac:#9b83ff;--ac2:#2b2545;--rd:#ff6b70;--gn:#4cc47f;--bl:#5aa2ff}}
+:root[data-theme="dark"]{--bg:#16161a;--sf:#222228;--tx:#f1f1f3;--mu:#9a9aa3;--bd:#3a3a44;--ac:#9b83ff;--ac2:#2b2545;--rd:#ff6b70;--gn:#4cc47f;--bl:#5aa2ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Noto Sans Thai","Sarabun",sans-serif;line-height:1.4}
+main{max-width:520px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}
+.mu{color:var(--mu);font-size:14px}
+.box{background:var(--sf);border:1px solid var(--bd);border-radius:14px;padding:14px;margin:12px 0}
+input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);font-size:16px;margin:6px 0}
+button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:12px 16px;background:var(--ac);color:#fff;font-weight:600}
+button.sec{background:var(--ac2);color:var(--ac)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.err{color:var(--rd);font-size:14px;min-height:20px}
+.code{font-size:36px;letter-spacing:6px;font-weight:700;text-align:center;color:var(--ac)}
+.pl{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pl b{font-size:17px}
+.bar{height:12px;border-radius:6px;background:var(--bd);overflow:hidden;margin:6px 0}
+.bar i{display:block;height:100%;background:var(--gn);transition:width .3s}
+.st{display:flex;gap:12px;font-size:14px;flex-wrap:wrap}
+.turn{outline:2px solid var(--ac)}
+.log{font-size:14px;color:var(--mu);min-height:90px}
+.log div{padding:2px 0}.log div:last-child{color:var(--tx);font-weight:600}
+.hand{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+.cd{background:var(--sf);color:var(--tx);border:2px solid var(--bd);padding:10px 6px;text-align:center;font-weight:400}
+.cd:not(:disabled){border-color:var(--ac)}
+.cd .e{font-size:28px}.cd .n{font-weight:700;font-size:14px}.cd .d{font-size:12px;color:var(--mu)}
+.cd .c{display:inline-block;background:var(--bl);color:#fff;border-radius:99px;padding:0 8px;font-size:12px;margin-bottom:4px}
+.win{text-align:center;font-size:20px;font-weight:700}
+</style>
+</head>
+<body>
+<main id="app"><p class="mu">กำลังโหลด...</p></main>
+<script>
+const CARDS={sword:{n:"ฟันดาบ",e:"⚔️",c:1,t:"dmg",v:3},fire:{n:"ลูกไฟ",e:"🔥",c:2,t:"dmg",v:5},bolt:{n:"สายฟ้า",e:"⚡",c:3,t:"dmg",v:7},bomb:{n:"ระเบิด",e:"💥",c:4,t:"dmg",v:10},heal:{n:"ยาฮีล",e:"💚",c:2,t:"heal",v:4},shield:{n:"โล่",e:"🛡️",c:1,t:"shd",v:3},drain:{n:"ดูดเลือด",e:"🧛",c:2,t:"drain",v:3}};
+const DESC={dmg:v=>"โจมตี "+v,heal:v=>"ฟื้น "+v+" HP",shd:v=>"โล่ "+v,drain:v=>"ตี "+v+" ดูด "+v};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const app=document.getElementById("app");
+let ws=null,G=null,ME=0,code="",err="",myName="";
+try{myName=localStorage.getItem("cd_name")||""}catch(e){}
+
+function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
+function connect(first){
+  err="กำลังเชื่อมต่อ (ครั้งแรกอาจรอ ~1 นาที)...";lobby();
+  ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host);
+  ws.onopen=()=>{err="";first()};
+  ws.onmessage=ev=>{const m=JSON.parse(ev.data);
+    if(m.t==="err"){err=m.m;if(!G)lobby();else{alert(m.m);}}
+    if(m.t==="wait"){G={status:"wait"};code=m.code;view()}
+    if(m.t==="state"){G=m.s;ME=m.me;code=m.code;view()}};
+  ws.onclose=()=>{if(G){err="การเชื่อมต่อหลุด";G=null;lobby()}};
+}
+function lobby(){
+  G=null;
+  app.innerHTML=`<h1>🃏 Card Duel</h1><p class="mu">เกมการ์ดผลัดกันเล่น 2 คน</p>
+  <div class="box"><input id="nm" maxlength="14" placeholder="ชื่อของคุณ" value="${esc(myName)}">
+  <button id="mk" style="width:100%;margin-top:6px">สร้างห้องใหม่</button>
+  <p class="mu" style="text-align:center">หรือ</p>
+  <div class="row"><input id="cd" maxlength="4" placeholder="รหัสห้อง" style="text-transform:uppercase"><button id="jn" class="sec">เข้าห้อง</button></div>
+  <div class="err">${esc(err)}</div></div>
+  <div class="box mu">ทุกเทิร์นมานาเพิ่ม 1 (สูงสุด 10) และจั่วการ์ด 1 ใบ เล่นการ์ดตามมานา แล้วกด “จบเทิร์น” ใครทำ HP คู่ต่อสู้เหลือ 0 ก่อนชนะ</div>`;
+  const nm=()=>{myName=document.getElementById("nm").value.trim()||"ผู้เล่น";try{localStorage.setItem("cd_name",myName)}catch(e){}return myName};
+  const go=o=>{o.name=nm();if(ws&&ws.readyState===1){err="";send(o)}else connect(()=>send(o))};
+  document.getElementById("mk").onclick=()=>go({t:"create"});
+  document.getElementById("jn").onclick=()=>go({t:"join",code:document.getElementById("cd").value.trim().toUpperCase()});
+}
+function bar(p,mine,active){
+  const w=Math.max(0,p.hp)/20*100;
+  return `<div class="box ${active?"turn":""}"><div class="pl"><b>${mine?"คุณ":"คู่ต่อสู้"}: ${esc(p.name)}</b><span class="mu">${active?"▶ ตาเล่น":""}</span></div>
+  <div class="bar"><i style="width:${w}%"></i></div>
+  <div class="st"><span>❤️ ${p.hp}/20</span><span>🛡️ ${p.shield}</span><span>💧 ${p.mana}/${p.max}</span>${mine?"":`<span>🃏 ${p.hand.length} ใบ</span>`}</div></div>`;
+}
+function view(){
+  const s=G;
+  if(s.status==="wait"){
+    app.innerHTML=`<h1>🃏 รอเพื่อน...</h1><div class="box"><p class="mu" style="text-align:center">ส่งรหัสห้องให้เพื่อน แล้วให้เพื่อนเปิดลิงก์เกมนี้</p><div class="code">${esc(code)}</div></div>`;return;
+  }
+  const me=s.p[ME],op=s.p[1-ME],myTurn=s.turn===ME&&s.status==="play";
+  let h=`<h1>🃏 ห้อง ${esc(code)}</h1>`;
+  h+=bar(op,false,s.turn!==ME&&s.status==="play");
+  h+=`<div class="box log">${s.log.map(l=>`<div>${esc(l)}</div>`).join("")}</div>`;
+  if(s.status==="over")h+=`<div class="box win">${s.winner===ME?"🎉 คุณชนะ!":"😵 คุณแพ้..."}</div><button id="rm" style="width:100%">เล่นอีกรอบ</button>`;
+  h+=bar(me,true,myTurn);
+  if(s.status==="play"){
+    h+=`<div class="hand">`+me.hand.map((k,i)=>{const c=CARDS[k];const ok=myTurn&&me.mana>=c.c;return `<button class="cd" data-i="${i}" ${ok?"":"disabled"}><span class="c">💧${c.c}</span><div class="e">${c.e}</div><div class="n">${c.n}</div><div class="d">${DESC[c.t](c.v)}</div></button>`}).join("")+`</div>`;
+    h+=`<button id="et" style="width:100%;margin-top:12px" ${myTurn?"":"disabled"}>${myTurn?"จบเทิร์น":"รอเพื่อนเล่น..."}</button>`;
+  }
+  app.innerHTML=h;
+  app.querySelectorAll(".cd").forEach(b=>b.onclick=()=>send({t:"play",i:+b.dataset.i}));
+  const et=document.getElementById("et");if(et)et.onclick=()=>send({t:"end"});
+  const rm=document.getElementById("rm");if(rm)rm.onclick=()=>send({t:"rematch"});
+}
+lobby();
+</script>
+</body>
+</html>
 
